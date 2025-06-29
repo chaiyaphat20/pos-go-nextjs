@@ -24,7 +24,12 @@
       "Bash(pkill:*)",
       "WebFetch(domain:next-intl-docs.vercel.app)",
       "Bash(PGPASSWORD=password psql:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(./gradlew:*)",
+      "Bash(diff:*)",
+      "Bash(rg:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next build:*)"
     ],
     "deny": []
   }

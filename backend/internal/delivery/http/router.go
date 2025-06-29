@@ -1,57 +1,86 @@
 package http
 
 import (
+	adminHandler "go-clean/internal/delivery/http/admin"
+	authHandler "go-clean/internal/delivery/http/auth"
+	"go-clean/internal/delivery/http/middleware"
+	orderHandler "go-clean/internal/delivery/http/order"
+	productHandler "go-clean/internal/delivery/http/product"
+	userHandler "go-clean/internal/delivery/http/user"
+	"go-clean/pkg/jwt"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"time"
 )
 
-func SetupRoutes(userHandler *UserHandler, productHandler *ProductHandler, saleHandler *SaleHandler, authHandler *AuthHandler) *gin.Engine {
+func SetupRoutes(authH *authHandler.Handler, userH *userHandler.Handler, productH *productHandler.Handler, orderH *orderHandler.Handler, adminH *adminHandler.Handler, jwtManager *jwt.JWTManager) *gin.Engine {
 	r := gin.Default()
-
-	// CORS middleware
+	
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
 	}))
 
 	api := r.Group("/api/v1")
 	{
-		// Auth routes (public)
+		// Public auth routes
 		auth := api.Group("/auth")
 		{
-			auth.POST("/login", authHandler.Login)
+			auth.POST("/login", authH.Login)
+			auth.POST("/register", authH.Register)
+			auth.POST("/refresh", authH.RefreshToken)
 		}
 
-		users := api.Group("/users")
-		{
-			users.POST("", userHandler.CreateUser)
-			users.GET("", userHandler.GetAllUsers)
-			users.GET("/:id", userHandler.GetUser)
-			users.PUT("/:id", userHandler.UpdateUser)
-			users.DELETE("/:id", userHandler.DeleteUser)
-		}
-
+		// Public product routes (anyone can view products)
 		products := api.Group("/products")
 		{
-			products.POST("", productHandler.CreateProduct)
-			products.GET("", productHandler.GetAllProducts)
-			products.GET("/:id", productHandler.GetProduct)
-			products.PUT("/:id", productHandler.UpdateProduct)
-			products.DELETE("/:id", productHandler.DeleteProduct)
-			products.PATCH("/:id/stock", productHandler.UpdateStock)
+			products.GET("", productH.GetProducts)
+			products.GET("/:id", productH.GetProduct)
 		}
 
-		sales := api.Group("/sales")
+		// Public user creation route (for admin creating users without auth)
+		api.POST("/users", userH.CreateUser)
+
+		// Protected routes
+		protected := api.Group("")
+		protected.Use(middleware.AuthMiddleware(jwtManager))
 		{
-			sales.POST("", saleHandler.CreateSale)
-			sales.GET("", saleHandler.GetAllSales)
-			sales.GET("/:id", saleHandler.GetSale)
-			sales.GET("/customer/:customer_id", saleHandler.GetSalesByCustomer)
+			users := protected.Group("/users")
+			{
+				users.GET("", userH.GetUsers)
+				users.GET("/:id", userH.GetUser)
+				users.PUT("/:id", userH.UpdateUser)
+				users.DELETE("/:id", userH.DeleteUser)
+			}
+
+			protectedProducts := protected.Group("/products")
+			{
+				protectedProducts.POST("", middleware.AdminOnly(), productH.CreateProduct)
+				protectedProducts.PUT("/:id", middleware.AdminOnly(), productH.UpdateProduct)
+				protectedProducts.DELETE("/:id", middleware.AdminOnly(), productH.DeleteProduct)
+				protectedProducts.PATCH("/:id/stock", middleware.AdminOnly(), productH.UpdateStock)
+				protectedProducts.GET("/low-stock", middleware.AdminOnly(), productH.GetLowStockProducts)
+			}
+
+			orders := protected.Group("/orders")
+			{
+				orders.POST("", orderH.CreateOrder)
+				orders.GET("", orderH.GetOrders)
+				orders.GET("/:id", orderH.GetOrder)
+				orders.PATCH("/:id/status", middleware.AdminOnly(), orderH.UpdateOrderStatus)
+				orders.POST("/:id/cancel", orderH.CancelOrder)
+			}
+
+			// Admin-only routes
+			admin := protected.Group("/admin")
+			admin.Use(middleware.AdminOnly())
+			{
+				admin.GET("/stats", adminH.GetSystemStats)
+				admin.GET("/users/detailed", adminH.GetAllUsersDetailed)
+			}
 		}
 	}
 
