@@ -1,43 +1,61 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { 
-  fetchProducts, 
-  createProduct, 
-  updateProduct, 
-  deleteProduct 
-} from '@/store/slices/productSlice';
+import { useSession } from 'next-auth/react';
+import { useProducts } from '@/hooks';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Modal from '@/components/ui/Modal';
 import ProductForm from '@/components/forms/ProductForm';
-import { Product } from '@/types/api';
 import { PencilIcon, TrashIcon, PlusIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { useTranslations } from 'next-intl';
+import type { Product } from '@/types/database';
 
 export default function Products() {
-  const { data: session } = useSession();
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { products, loading, error } = useAppSelector((state) => state.products);
+  const { data: session, status } = useSession();
+  const { products, loading, error, fetchProducts, createProduct, updateProduct, deleteProduct } = useProducts();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formLoading, setFormLoading] = useState(false);
-  const [cart, setCart] = useState<{[key: number]: number}>({});
-  const [tempCartItems, setTempCartItems] = useState<Array<{id: number, name: string, price: number, quantity: number, stock: number}>>([]);
+  const [cart, setCart] = useState<{[key: string]: number}>({});
+  const [tempCartItems, setTempCartItems] = useState<Array<{id: string, name: string, price: number, quantity: number, stock: number}>>([]);
   const [showConfirmButton, setShowConfirmButton] = useState(false);
   const t = useTranslations('products');
   const tShopping = useTranslations('shopping');
-  const tMessages = useTranslations('messages');
-  const tCart = useTranslations('cart');
 
-  const isAdmin = (session?.user as any)?.role === 'admin';
+  const isAdmin = session?.user?.role === 'admin';
+  const user = session?.user;
+  const isAuthenticated = !!session;
+  const authLoading = status === 'loading';
+  
+  // Debug logging
+  console.log('Session:', session);
+  console.log('User object:', user);
+  console.log('User role:', user?.role);
+  console.log('Is admin:', isAdmin);
 
   useEffect(() => {
-    dispatch(fetchProducts());
-  }, [dispatch]);
+    console.log('Products useEffect - authLoading:', authLoading);
+    console.log('Products useEffect - isAuthenticated:', isAuthenticated);
+    console.log('Products useEffect - user:', user);
+    console.log('Products useEffect - isAdmin:', isAdmin);
+    
+    // Wait for auth to finish loading
+    if (authLoading) {
+      console.log('Products useEffect - Auth still loading, waiting...');
+      return;
+    }
+    
+    if (!isAuthenticated) {
+      console.log('Products useEffect - Not authenticated, redirecting to signin');
+      router.push('/auth/signin');
+      return;
+    }
+    
+    console.log('Products useEffect - Authenticated, fetching products');
+    fetchProducts();
+  }, [authLoading, isAuthenticated, router, isAdmin]);
 
   const handleCreateProduct = async (data: {
     name: string;
@@ -47,7 +65,7 @@ export default function Products() {
   }) => {
     setFormLoading(true);
     try {
-      await dispatch(createProduct(data)).unwrap();
+      await createProduct(data);
       setModalOpen(false);
       setEditingProduct(null);
     } catch (error) {
@@ -66,7 +84,7 @@ export default function Products() {
     if (!editingProduct) return;
     setFormLoading(true);
     try {
-      await dispatch(updateProduct({ id: editingProduct.id, productData: data })).unwrap();
+      await updateProduct(editingProduct.id, data);
       setModalOpen(false);
       setEditingProduct(null);
     } catch (error) {
@@ -76,10 +94,10 @@ export default function Products() {
     }
   };
 
-  const handleDeleteProduct = async (id: number) => {
+  const handleDeleteProduct = async (id: string) => {
     if (confirm('Are you sure you want to delete this product?')) {
       try {
-        await dispatch(deleteProduct(id)).unwrap();
+        await deleteProduct(id);
       } catch (error) {
         console.error('Failed to delete product:', error);
       }
@@ -102,7 +120,7 @@ export default function Products() {
   };
 
   // Shopping cart functions (สำหรับ user)
-  const addToCart = (productId: number, quantity: number = 1) => {
+  const addToCart = (productId: string, quantity: number = 1) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
@@ -142,11 +160,11 @@ export default function Products() {
 
     // ย้ายข้อมูลจาก temporary cart ไป localStorage
     const savedCart = localStorage.getItem('cart');
-    let cartItems = savedCart ? JSON.parse(savedCart) : [];
+    const cartItems: Array<{id: string, name: string, price: number, quantity: number, stock: number}> = savedCart ? JSON.parse(savedCart) : [];
     
     // รวม temporary items เข้ากับ cart ที่มีอยู่
     tempCartItems.forEach(tempItem => {
-      const existingItemIndex = cartItems.findIndex((item: any) => item.id === tempItem.id);
+      const existingItemIndex = cartItems.findIndex((item) => item.id === tempItem.id);
       
       if (existingItemIndex > -1) {
         cartItems[existingItemIndex].quantity += tempItem.quantity;
@@ -177,9 +195,21 @@ export default function Products() {
     return tempCartItems.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const getCartQuantity = (productId: number) => {
+  const getCartQuantity = (productId: string) => {
     return cart[productId] || 0;
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-700">Checking authentication...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

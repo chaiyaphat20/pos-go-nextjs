@@ -1,14 +1,16 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, createSlice } from '@reduxjs/toolkit';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
-import userSlice from './slices/userSlice';
-import productSlice from './slices/productSlice';
-import saleSlice from './slices/saleSlice';
+
+// Dummy slice since we're using custom hooks instead of Redux
+const dummySlice = createSlice({
+  name: 'dummy',
+  initialState: {},
+  reducers: {},
+});
 
 export const store = configureStore({
   reducer: {
-    users: userSlice,
-    products: productSlice,
-    sales: saleSlice,
+    dummy: dummySlice.reducer,
   },
 });
 

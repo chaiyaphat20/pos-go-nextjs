@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { TrashIcon, PlusIcon, MinusIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useOrders } from '@/hooks';
 
 interface CartItem {
   id: number;
@@ -24,10 +25,12 @@ export default function Cart() {
   const tShopping = useTranslations('shopping');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const { createOrder } = useOrders();
 
   // ตรวจสอบว่าเป็น user หรือไม่
   useEffect(() => {
-    if (session && (session.user as any)?.role === 'admin') {
+    if (session && session.user?.role === 'admin') {
       router.push('/dashboard'); // redirect admin ไปหน้า dashboard
     }
   }, [session, router, locale]);
@@ -70,35 +73,40 @@ export default function Cart() {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
 
-  const handleCheckout = () => {
-    if (cartItems.length === 0) return;
+  const handleCheckout = async () => {
+    if (cartItems.length === 0 || processing) return;
 
-    // สร้าง order ใหม่
-    const newOrder = {
-      id: Date.now().toString(),
-      items: cartItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity
-      })),
-      total: getSubtotal(),
-      status: 'pending' as const,
-      createdAt: new Date().toISOString()
-    };
+    setProcessing(true);
+    try {
+      console.log('Session:', session);
+      console.log('User ID:', session?.user?.id);
+      
+      // สร้าง order request data  
+      const orderData = {
+        user_id: session?.user?.id || '',
+        order_items: cartItems.map(item => ({
+          product_id: item.id.toString(),
+          quantity: item.quantity
+        }))
+      };
+      
+      console.log('Order data:', orderData);
 
-    // บันทึกลง localStorage
-    const savedOrders = localStorage.getItem('orders');
-    const orders = savedOrders ? JSON.parse(savedOrders) : [];
-    orders.unshift(newOrder); // เพิ่มที่ด้านบน
-    localStorage.setItem('orders', JSON.stringify(orders));
+      // เรียก API สร้าง order
+      await createOrder(orderData);
 
-    // ล้างตะกร้า
-    localStorage.removeItem('cart');
-    setCartItems([]);
+      // ล้างตะกร้า
+      localStorage.removeItem('cart');
+      setCartItems([]);
 
-    // ไปยังหน้า orders
-    router.push('/orders');
+      // ไปยังหน้า orders
+      router.push('/orders');
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      alert('เกิดข้อผิดพลาดในการสร้างคำสั่งซื้อ กรุณาลองใหม่');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   if (loading) {
@@ -221,9 +229,10 @@ export default function Cart() {
                   <div className="mt-6 space-y-3">
                     <button
                       onClick={handleCheckout}
-                      className="w-full bg-green-600 border border-transparent rounded-md shadow-sm py-3 px-4 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      disabled={processing}
+                      className="w-full bg-green-600 border border-transparent rounded-md shadow-sm py-3 px-4 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {t('checkout')}
+                      {processing ? 'กำลังดำเนินการ...' : t('checkout')}
                     </button>
                     
                     <Link

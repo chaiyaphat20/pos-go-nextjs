@@ -1,4 +1,5 @@
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { apiClient } from './api';
 
 export const authOptions = {
   providers: [
@@ -14,14 +15,24 @@ export const authOptions = {
           return null;
         }
 
-        // For demo purposes, using simple authentication
-        // In production, verify credentials against your backend
-        if (credentials.email === 'admin@example.com' && credentials.password === 'admin') {
-          return {
-            id: '1',
+        try {
+          const authResponse = await apiClient.login({
             email: credentials.email,
-            name: 'Admin User',
-          };
+            password: credentials.password,
+          });
+
+          if (authResponse && authResponse.user) {
+            return {
+              id: authResponse.user.id,
+              email: authResponse.user.email,
+              name: authResponse.user.username,
+              role: authResponse.user.role,
+              accessToken: authResponse.access_token,
+              refreshToken: authResponse.refresh_token,
+            };
+          }
+        } catch (error) {
+          console.error('Authentication failed:', error);
         }
 
         return null;
@@ -39,6 +50,9 @@ export const authOptions = {
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id;
+        token.role = user.role;
+        token.accessToken = user.accessToken;
+        token.refreshToken = user.refreshToken;
       }
       return token;
     },
@@ -46,6 +60,9 @@ export const authOptions = {
     async session({ session, token }: any) {
       if (token && session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.accessToken = token.accessToken as string;
+        session.refreshToken = token.refreshToken as string;
       }
       return session;
     },

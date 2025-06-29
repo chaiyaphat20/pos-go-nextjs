@@ -1,6 +1,5 @@
 'use client'
-import { Locale, routing, usePathname, useRouter } from '@/i18n/routing'
-import { useParams } from 'next/navigation'
+import {  routing, usePathname } from '@/i18n/routing'
 import { ReactNode } from 'react'
 
 type Props = {
@@ -10,10 +9,7 @@ type Props = {
 }
 
 export default function LocaleSwitcherSelect({ defaultValue, label }: Props) {
-  const router = useRouter()
   const pathname = usePathname()
-  const params = useParams()
-
   function onSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const nextLocale = event.target.value
     console.log('Switching to locale:', nextLocale)

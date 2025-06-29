@@ -1,50 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
+import Link from 'next/link';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { CheckCircleIcon, ClockIcon, XCircleIcon } from '@heroicons/react/24/outline';
-
-interface OrderItem {
-  id: number;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
-interface Order {
-  id: string;
-  items: OrderItem[];
-  total: number;
-  status: 'pending' | 'completed' | 'cancelled';
-  createdAt: string;
-}
+import { useOrders } from '@/hooks';
+// import type { Order } from '@/types/api';
 
 export default function Orders() {
   const { data: session } = useSession();
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations('orders');
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders, loading, fetchOrders } = useOrders();
 
   // ตรวจสอบว่าเป็น user หรือไม่
   useEffect(() => {
-    if (session && (session.user as any)?.role === 'admin') {
+    if (session && session.user?.role === 'admin') {
       router.push('/dashboard'); // redirect admin ไปหน้า dashboard
     }
   }, [session, router, locale]);
 
-  // Load orders from localStorage (ในอนาคตจะดึงจาก API)
+  // Load orders from API
   useEffect(() => {
-    const savedOrders = localStorage.getItem('orders');
-    if (savedOrders) {
-      setOrders(JSON.parse(savedOrders));
+    if (session?.user?.id) {
+      fetchOrders();
     }
-    setLoading(false);
-  }, []);
+  }, [fetchOrders, session?.user?.id]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -101,12 +86,12 @@ export default function Orders() {
           <div className="text-center py-12 bg-white rounded-lg shadow">
             <p className="text-gray-500 text-lg">{t('noOrders')}</p>
             <div className="mt-6">
-              <a
+              <Link
                 href="/products"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
                 Start Shopping
-              </a>
+              </Link>
             </div>
           </div>
         ) : (
@@ -125,7 +110,7 @@ export default function Orders() {
                             {t('orderNumber')}: #{order.id}
                           </h3>
                           <p className="text-sm text-gray-500">
-                            {t('orderDate')}: {formatDate(order.createdAt)}
+                            {t('orderDate')}: {formatDate(order.created_at)}
                           </p>
                         </div>
                       </div>
@@ -135,7 +120,7 @@ export default function Orders() {
                             {getStatusText(order.status)}
                           </p>
                           <p className="text-lg font-semibold text-gray-900">
-                            ${order.total.toFixed(2)}
+                            ${(order.total_amount || 0).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -145,10 +130,10 @@ export default function Orders() {
                     <div className="mt-4">
                       <h4 className="text-sm font-medium text-gray-700 mb-2">Items:</h4>
                       <div className="space-y-1">
-                        {order.items.map((item, index) => (
+                        {(order.items || []).map((item, index) => (
                           <div key={index} className="flex justify-between text-sm text-gray-600">
-                            <span>{item.name} x {item.quantity}</span>
-                            <span>${(item.price * item.quantity).toFixed(2)}</span>
+                            <span>{item.product?.name || item.product_snapshot?.name || 'Product'} x {item.quantity}</span>
+                            <span>${(item.total_price || 0).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>

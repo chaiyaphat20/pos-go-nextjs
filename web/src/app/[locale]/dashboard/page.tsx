@@ -1,25 +1,21 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { fetchUsers } from '@/store/slices/userSlice';
-import { fetchProducts } from '@/store/slices/productSlice';
-import { fetchSales } from '@/store/slices/saleSlice';
+import { useUsers, useProducts, useOrders } from '@/hooks';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 
 export default function Dashboard() {
-  const dispatch = useAppDispatch();
-  const { users } = useAppSelector((state) => state.users);
-  const { products } = useAppSelector((state) => state.products);
-  const { sales } = useAppSelector((state) => state.sales);
+  const { users, fetchUsers } = useUsers();
+  const { products, fetchProducts } = useProducts();
+  const { orders, fetchOrders } = useOrders();
 
   useEffect(() => {
-    dispatch(fetchUsers());
-    dispatch(fetchProducts());
-    dispatch(fetchSales());
-  }, [dispatch]);
+    fetchUsers();
+    fetchProducts();
+    fetchOrders();
+  }, []);
 
-  const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalRevenue = orders.reduce((sum, sale) => sum + (sale.total_amount || 0), 0);
   const lowStockProducts = products.filter(product => product.stock < 10);
 
   return (
@@ -129,9 +125,9 @@ export default function Dashboard() {
                 Recent Sales
               </h3>
               <div className="mt-5">
-                {sales.length > 0 ? (
+                {orders.length > 0 ? (
                   <ul className="divide-y divide-gray-200">
-                    {sales.slice(0, 5).map((sale) => (
+                    {orders.slice(0, 5).map((sale) => (
                       <li key={sale.id} className="py-3">
                         <div className="flex items-center space-x-4">
                           <div className="flex-1 min-w-0">
@@ -139,11 +135,11 @@ export default function Dashboard() {
                               Sale #{sale.id}
                             </p>
                             <p className="text-sm text-gray-500">
-                              {sale.customer?.name || 'Walk-in Customer'}
+                              {sale.customer?.username || 'Walk-in Customer'}
                             </p>
                           </div>
                           <div className="text-sm text-gray-900 font-medium">
-                            ${sale.total.toFixed(2)}
+                            ${(sale.total_amount || 0).toFixed(2)}
                           </div>
                         </div>
                       </li>

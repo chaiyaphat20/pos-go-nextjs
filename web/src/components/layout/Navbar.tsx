@@ -24,7 +24,7 @@ export default function Navbar() {
       { name: t('products'), href: '/products' },
     ];
 
-    if ((session?.user as any)?.role === 'admin') {
+    if (session?.user?.role === 'admin') {
       // Admin: Dashboard, Products (full access), Users
       return [
         ...baseNav,

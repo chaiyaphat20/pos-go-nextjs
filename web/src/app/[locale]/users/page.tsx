@@ -3,65 +3,72 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { fetchUsers, createUser, updateUser, deleteUser } from '@/store/slices/userSlice';
+import { useUsers } from '@/hooks';
+import type { User, UserRole } from '@/types/database';
+import type { UpdateUserRequest } from '@/types/api/user';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Modal from '@/components/ui/Modal';
-import { User } from '@/types/api';
 import { PencilIcon, TrashIcon, PlusIcon, UserIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { useTranslations } from 'next-intl';
 
 export default function Users() {
   const { data: session } = useSession();
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { users, loading, error } = useAppSelector((state) => state.users);
+  const { users, loading, error, fetchUsers, createUser, updateUser, deleteUser } = useUsers();
   const t = useTranslations('users');
   const tMessages = useTranslations('messages');
   const tButtons = useTranslations('buttons');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [formData, setFormData] = useState({ username: '', email: '', password: '', password_confirmation: '', role: 'user' });
   const [formLoading, setFormLoading] = useState(false);
 
   // ตรวจสอบว่าเป็น admin หรือไม่
   useEffect(() => {
-    if (session && (session.user as any)?.role !== 'admin') {
+    if (session && session.user?.role !== 'admin') {
       router.push('/dashboard'); // redirect ไปหน้า dashboard ถ้าไม่ใช่ admin
     }
   }, [session, router]);
 
   useEffect(() => {
-    dispatch(fetchUsers());
-  }, [dispatch]);
+    fetchUsers();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate password confirmation for new users
+    if (!editingUser && formData.password !== formData.password_confirmation) {
+      alert('Passwords do not match');
+      return;
+    }
+    
     setFormLoading(true);
     try {
       if (editingUser) {
         // For update, only include password if it's provided
-        const updateData: any = {
-          name: formData.name,
+        const updateData: UpdateUserRequest = {
+          username: formData.username,
           email: formData.email,
-          role: formData.role
+          role: formData.role as UserRole
         };
         if (formData.password.trim()) {
           updateData.password = formData.password;
         }
-        await dispatch(updateUser({ id: editingUser.id, userData: updateData })).unwrap();
+        await updateUser(editingUser.id, updateData);
       } else {
         // For create, password is required
-        await dispatch(createUser({
-          name: formData.name,
+        await createUser({
+          username: formData.username,
           email: formData.email,
           password: formData.password,
-          role: formData.role
-        })).unwrap();
+          password_confirmation: formData.password_confirmation,
+          role: formData.role as UserRole
+        });
       }
       setModalOpen(false);
       setEditingUser(null);
-      setFormData({ name: '', email: '', password: '', role: 'user' });
+      setFormData({ username: '', email: '', password: '', password_confirmation: '', role: 'user' });
     } catch (error) {
       console.error('Failed to save user:', error);
     } finally {
@@ -69,204 +76,231 @@ export default function Users() {
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (confirm('Are you sure you want to delete this user?')) {
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      username: user.username || '',
+      email: user.email || '',
+      password: '',
+      password_confirmation: '',
+      role: user.role || 'user'
+    });
+    setModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm(tMessages('confirmDelete'))) {
       try {
-        await dispatch(deleteUser(id)).unwrap();
+        await deleteUser(id);
       } catch (error) {
         console.error('Failed to delete user:', error);
       }
     }
   };
 
-  const openCreateModal = () => {
+  const handleAdd = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '' });
+    setFormData({ username: '', email: '', password: '', password_confirmation: '', role: 'user' });
     setModalOpen(true);
   };
 
-  const openEditModal = (user: User) => {
-    setEditingUser(user);
-    setFormData({ name: user.name, email: user.email, password: '', role: user.role || 'user' });
-    setModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setEditingUser(null);
-    setFormData({ name: '', email: '' });
-  };
+  if (!session || session.user?.role !== 'admin') {
+    return <div>Loading...</div>;
+  }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="sm:flex sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">{t('title')}</h1>
-            <p className="mt-1 text-sm text-gray-700">{t('subtitle')}</p>
-          </div>
-          <div className="mt-4 sm:mt-0">
-            <button
-              onClick={openCreateModal}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-              {t('addUser')}
-            </button>
-          </div>
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
+          <button
+            onClick={handleAdd}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <PlusIcon className="h-5 w-5" />
+            {tButtons('add')}
+          </button>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4">
-            <div className="text-sm text-red-700">{error}</div>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
           </div>
         )}
 
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          {loading && users.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-gray-700">{t('loadingUsers')}</p>
-            </div>
-          ) : users.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-700">{tMessages('noUsersFound')}</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {users.map((user) => (
-                <li key={user.id}>
-                  <div className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-3">
-                          <h3 className="text-lg font-medium text-gray-900 truncate">
-                            {user.name}
-                          </h3>
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            {loading ? (
+              <div className="text-center py-4">Loading...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {t('username')}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {t('email')}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {t('role')}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {t('status')}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {t('actions')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map((user) => (
+                      <tr key={user.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10">
+                              <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                                <UserIcon className="h-6 w-6 text-gray-600" />
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">
+                                {user.username}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             user.role === 'admin' 
                               ? 'bg-purple-100 text-purple-800' 
-                              : 'bg-blue-100 text-blue-800'
+                              : 'bg-green-100 text-green-800'
                           }`}>
-                            {user.role === 'admin' ? (
-                              <>
-                                <ShieldCheckIcon className="h-3 w-3 mr-1" />
-                                {tMessages('admin')}
-                              </>
-                            ) : (
-                              <>
-                                <UserIcon className="h-3 w-3 mr-1" />
-                                {tMessages('user')}
-                              </>
-                            )}
+                            {user.role === 'admin' && <ShieldCheckIcon className="h-4 w-4 mr-1" />}
+                            {user.role}
                           </span>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-700">{user.email}</p>
-                        <p className="mt-1 text-xs text-gray-600">
-                          {tMessages('createdLabel')}{new Date(user.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => openEditModal(user)}
-                          className="p-2 text-gray-400 hover:text-blue-600"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="p-2 text-gray-400 hover:text-red-600"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.is_active ? t('active') : t('inactive')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(user.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <Modal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editingUser ? t('editUser') : t('createUser')}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              {tMessages('name')}
-            </label>
-            <input
-              type="text"
-              id="name"
-              required
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-800 bg-white"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-          </div>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              {tMessages('email')}
-            </label>
-            <input
-              type="email"
-              id="email"
-              required
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-800 bg-white"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              {tMessages('password')} {editingUser && <span className="text-gray-500 text-xs">(Leave blank to keep current)</span>}
-            </label>
-            <input
-              type="password"
-              id="password"
-              required={!editingUser}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-800 bg-white"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            />
-          </div>
-          <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-              {t('role')}
-            </label>
-            <select
-              id="role"
-              required
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-800 bg-white"
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-            >
-              <option value="">{t('selectRole')}</option>
-              <option value="user">{tMessages('user')}</option>
-              <option value="admin">{tMessages('admin')}</option>
-            </select>
-          </div>
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              {tButtons('cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={formLoading}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {formLoading ? tMessages('saving') : editingUser ? t('updateUser') : t('createUser')}
-            </button>
-          </div>
-        </form>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingUser ? t('editUser') : t('addUser')}>
+        <div className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('username')}
+              </label>
+              <input
+                type="text"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('email')}
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('password')} {editingUser && '(leave blank to keep current)'}
+              </label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                required={!editingUser}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Confirm Password {editingUser && '(leave blank to keep current)'}
+              </label>
+              <input
+                type="password"
+                value={formData.password_confirmation}
+                onChange={(e) => setFormData({ ...formData, password_confirmation: e.target.value })}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                required={!editingUser}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                {t('role')}
+              </label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                {tButtons('cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={formLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+              >
+                {formLoading ? 'Saving...' : tButtons('save')}
+              </button>
+            </div>
+          </form>
+        </div>
       </Modal>
     </DashboardLayout>
   );

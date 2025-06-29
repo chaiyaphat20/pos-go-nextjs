@@ -1,50 +1,46 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { fetchSales, createSale } from '@/store/slices/saleSlice';
-import { fetchProducts } from '@/store/slices/productSlice';
-import { fetchUsers } from '@/store/slices/userSlice';
+import { useOrders, useProducts, useUsers } from '@/hooks';
+import type { Order } from '@/types/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Modal from '@/components/ui/Modal';
-import { Sale } from '@/types/api';
 import { PlusIcon, EyeIcon } from '@heroicons/react/24/outline';
 
 export default function Sales() {
-  const dispatch = useAppDispatch();
-  const { sales, loading, error } = useAppSelector((state) => state.sales);
-  const { products } = useAppSelector((state) => state.products);
-  const { users } = useAppSelector((state) => state.users);
+  const { orders, loading, error, fetchOrders, createOrder } = useOrders();
+  const { products, fetchProducts } = useProducts();
+  const { users, fetchUsers } = useUsers();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
-  const [saleItems, setSaleItems] = useState([{ product_id: 0, quantity: 1 }]);
-  const [customerId, setCustomerId] = useState<number | undefined>();
+  const [selectedSale, setSelectedSale] = useState<Order | null>(null);
+  const [saleItems, setSaleItems] = useState([{ product_id: '', quantity: 1 }]);
+  const [customerId, setCustomerId] = useState<string | undefined>();
   const [formLoading, setFormLoading] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchSales());
-    dispatch(fetchProducts());
-    dispatch(fetchUsers());
-  }, [dispatch]);
+    fetchOrders();
+    fetchProducts();
+    fetchUsers();
+  }, []);
 
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     try {
-      const validItems = saleItems.filter(item => item.product_id > 0 && item.quantity > 0);
+      const validItems = saleItems.filter(item => item.product_id && item.product_id.length > 0 && item.quantity > 0);
       if (validItems.length === 0) {
         alert('Please add at least one valid item');
         return;
       }
 
-      await dispatch(createSale({
+      await createOrder({
         ...(customerId ? { customer_id: customerId } : {}),
         items: validItems
-      })).unwrap();
+      });
 
       setModalOpen(false);
-      setSaleItems([{ product_id: 0, quantity: 1 }]);
+      setSaleItems([{ product_id: '', quantity: 1 }]);
       setCustomerId(undefined);
     } catch (error) {
       console.error('Failed to create sale:', error);
@@ -55,10 +51,10 @@ export default function Sales() {
   };
 
   const addSaleItem = () => {
-    setSaleItems([...saleItems, { product_id: 0, quantity: 1 }]);
+    setSaleItems([...saleItems, { product_id: '', quantity: 1 }]);
   };
 
-  const updateSaleItem = (index: number, field: string, value: number) => {
+  const updateSaleItem = (index: number, field: string, value: string | number) => {
     const updatedItems = [...saleItems];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
     setSaleItems(updatedItems);
@@ -69,12 +65,12 @@ export default function Sales() {
   };
 
   const openCreateModal = () => {
-    setSaleItems([{ product_id: 0, quantity: 1 }]);
+    setSaleItems([{ product_id: '', quantity: 1 }]);
     setCustomerId(undefined);
     setModalOpen(true);
   };
 
-  const openViewModal = (sale: Sale) => {
+  const openViewModal = (sale: Order) => {
     setSelectedSale(sale);
     setViewModalOpen(true);
   };
@@ -105,18 +101,18 @@ export default function Sales() {
         )}
 
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          {loading && sales.length === 0 ? (
+          {loading && orders.length === 0 ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
               <p className="mt-2 text-gray-500">Loading sales...</p>
             </div>
-          ) : sales.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">No sales found. Create your first sale!</p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-200">
-              {sales.map((sale) => (
+              {orders.map((sale) => (
                 <li key={sale.id}>
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
@@ -126,11 +122,11 @@ export default function Sales() {
                             Sale #{sale.id}
                           </h3>
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            ${sale.total.toFixed(2)}
+                            ${sale.total_amount.toFixed(2)}
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
-                          Customer: {sale.customer?.name || 'Walk-in Customer'}
+                          Customer: {sale.customer?.username || 'Walk-in Customer'}
                         </p>
                         <p className="mt-1 text-xs text-gray-400">
                           {new Date(sale.created_at).toLocaleString()}
@@ -166,12 +162,12 @@ export default function Sales() {
             <select
               className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-500 bg-white"
               value={customerId || ''}
-              onChange={(e) => setCustomerId(e.target.value ? parseInt(e.target.value) : undefined)}
+              onChange={(e) => setCustomerId(e.target.value || undefined)}
             >
               <option value="">Walk-in Customer</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.name} ({user.email})
+                  {user.username} ({user.email})
                 </option>
               ))}
             </select>
@@ -186,10 +182,10 @@ export default function Sales() {
                 <select
                   className="flex-1 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border text-gray-500 bg-white"
                   value={item.product_id}
-                  onChange={(e) => updateSaleItem(index, 'product_id', parseInt(e.target.value))}
+                  onChange={(e) => updateSaleItem(index, 'product_id', e.target.value)}
                   required
                 >
-                  <option value={0}>Select Product</option>
+                  <option value="">Select Product</option>
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.name} - ${product.price.toFixed(2)} (Stock: {product.stock})
@@ -250,17 +246,17 @@ export default function Sales() {
         {selectedSale && (
           <div className="space-y-4">
             <div>
-              <p><strong>Customer:</strong> {selectedSale.customer?.name || 'Walk-in Customer'}</p>
+              <p><strong>Customer:</strong> {selectedSale.customer?.username || 'Walk-in Customer'}</p>
               <p><strong>Date:</strong> {new Date(selectedSale.created_at).toLocaleString()}</p>
-              <p><strong>Total:</strong> ${selectedSale.total.toFixed(2)}</p>
+              <p><strong>Total:</strong> ${selectedSale.total_amount.toFixed(2)}</p>
             </div>
             <div>
               <h4 className="font-medium text-gray-900 mb-2">Items:</h4>
               <ul className="space-y-2">
-                {selectedSale.sale_items.map((item) => (
+                {selectedSale.items.map((item) => (
                   <li key={item.id} className="flex justify-between">
-                    <span>{item.product.name} x {item.quantity}</span>
-                    <span>${item.subtotal.toFixed(2)}</span>
+                    <span>{item.product?.name || item.product_snapshot?.name || 'Product'} x {item.quantity}</span>
+                    <span>${item.total_price.toFixed(2)}</span>
                   </li>
                 ))}
               </ul>

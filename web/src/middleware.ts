@@ -42,7 +42,7 @@ export default function middleware(req: NextRequest) {
     return intlMiddleware(req)
   }
 
-  return (authMiddleware as any)(req)
+  return (authMiddleware as (req: NextRequest) => Response | Promise<Response>)(req)
 }
 
 export const config = {

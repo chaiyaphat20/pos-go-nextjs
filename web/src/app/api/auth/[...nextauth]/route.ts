@@ -30,15 +30,25 @@ const authOptions = {
 
           if (response.ok) {
             const data = await response.json();
-            return {
-              id: data.user.id.toString(),
-              email: data.user.email,
-              name: data.user.name,
-              role: data.user.role,
-              token: data.token,
-            };
+            console.log('Login response:', data); // Debug log
+            
+            // Check if the response has the expected structure
+            if (data.success && data.data && data.data.user) {
+              return {
+                id: data.data.user.id.toString(),
+                email: data.data.user.email,
+                name: data.data.user.username, // API returns username, not name
+                role: data.data.user.role,
+                accessToken: data.data.access_token,
+                refreshToken: data.data.refresh_token,
+              };
+            } else {
+              console.error('Unexpected response structure:', data);
+              return null;
+            }
           } else {
-            console.error('Login failed:', response.status);
+            const errorData = await response.json();
+            console.error('Login failed:', response.status, errorData);
             return null;
           }
         } catch (error) {
@@ -60,7 +70,8 @@ const authOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        token.accessToken = user.token; // เก็บ JWT token จาก backend
+        token.accessToken = user.accessToken;
+        token.refreshToken = user.refreshToken;
       }
       return token;
     },
@@ -69,15 +80,14 @@ const authOptions = {
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        session.accessToken = token.accessToken; // ส่ง token ไปใน session
+        session.accessToken = token.accessToken;
+        session.refreshToken = token.refreshToken;
       }
       return session;
     },
   },
 };
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-expect-error NextAuth v4 compatibility issue with Next.js 15
 const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
